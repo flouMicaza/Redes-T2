@@ -123,7 +123,8 @@ void *funcionTCP(void *puerto){
 		buffer = agregarHeader(buffer,"D",serie,cnt);
 		//no se si sea necesario entregarle cnt a agregarHeader
 		
-		//intentar enviar hasta que reciba el ack 
+		//intentar enviar hasta que reciba el ack
+		write(sudp, buffer_salida, cnt); //hay que enviarlo por primera vez(?)
 		while(esperarACK(serie) == 0)
 			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio 
     }	
@@ -133,22 +134,25 @@ void *funcionTCP(void *puerto){
 
 //saca el tipo del header y el numero de secuencia
 //NO ESTOY SEGURA SI SE PONE ASI LA FIRMA!!!
-void sacarHeader(int[] buffer, char* letra, int*numSec){
+//cambie la firma para que nos avise que letra es
+int sacarHeader(int[] buffer, char* letra, int*numSec){
 	letra = buffer[0];
 	char numeros[5];
-	for (int i = 1; i < 6; i++)
-	{
+	for (int i = 1; i < 6; i++){
 		numeros[i-1]=buffer[i];
 	}
+	
 	num=to_int_seq(numeros);
 	numSec=num;
+	
+	return letra == 'D';
 }
 
 //funcion que lee por udp y manda por TCP las cosas de vuelta
 //si se lee un ACK entonces 
 void *funcionUDP(){
 	int bytes, cnt;
-	char buffer[BUFFER_LENGTH];
+	char buffer[BUFFER_LENGTH+6]; //(habrá que agregarle 6 bytes al buffer (?))
 
 	for(bytes=0;;bytes+=cnt) {
 		if((cnt=read(sudp, buffer, BUFFER_LENGTH)) <= 0){ //ya no queda nada mas para leer
@@ -159,9 +163,10 @@ void *funcionUDP(){
 	    char ack;
 	    int numSec;
 	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
-	    sacarHeader(buffer,&ack,&numSec);
-
-	    Dwrite(portTCP, buffer, cnt); //devolvemos cosas a stcp
+	    int conf = sacarHeader(buffer,&ack,&numSec);
+		
+		if(conf)//devolvemos cosas a stcp solo si recibimos un paquete
+			Dwrite(portTCP, buffer, cnt); 
 	    
 	}
 	//Dwrite(stcp, buffer, 0); //avisa que termino
