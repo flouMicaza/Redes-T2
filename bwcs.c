@@ -39,23 +39,29 @@ void *DbindAux(){
 
 
 //no estoy segura si el buffer se pasa asi!
-void agregarHeader(int[] buff,char letra, int numSerie,int largo){
-	char buffer1[BUFFER_LENGTH];
-	buffer1=buffer;
+//revise en la funcion Dread y lo modifique (funcion Dread esta en Data-tcp.c)
+void agregarHeader(char *buff,char letra, int numSerie,int largo, char *buffer_salida){
+	char buffer1 = buffer_salida; //hay que agregarle 6 bytes(?)
+	
+//	buffer1=buffer; //no entiendo de donde sale buffer ??
+	
+	
 	//ponemos el header en buffer1. 
-	buffer[0]=letra;
+	buffer1[0]=letra;
 	char str[5];
 	to_char_seq(numSerie, str) //dejamos numSerie en str
 
 	//nose si este for esta bien en el rango!
 	for(int i = 1; i <6; i++){
-		buffer[i]=str[i-1]; //en el header chanto los elementos del string 
+		buffer1[i]=str[i-1]; //en el header chanto los elementos del string 
 	}
 
 	//for para meter todo lo nuevo
-	for(int i = 6; i<largo; i++){
-		buffer[i]=buffer1[i-6];
+	//ojo que hay que iterar desde 0 hasta el largo del buffer(?)
+	for(int i = 6; i<BUFFER_LENGTH; i++){
+		buffer1[i]=buff[i-6];
 	}
+	
 }
 
 //metodo que espera el ack a traves del pipe
@@ -111,10 +117,15 @@ void *funcionTCP(void *puerto){
 		cnt+=6;
 		//se le agrega header al buffer y de manda
 		//NO ESTOY SEGURA SI LOS BUFFER ESTAN FUNCIONANDO BIEN!
-		buffer = agregarHeader(buffer,"D",serie,cnt) 
+		
+		//cree un buffer de salida, y lo muté usando la funcion q hiciste
+		char buffer_salida[BUFFER_LENGTH+6];
+		buffer = agregarHeader(buffer,"D",serie,cnt);
+		//no se si sea necesario entregarle cnt a agregarHeader
+		
 		//intentar enviar hasta que reciba el ack 
 		while(esperarACK(serie) == 0)
-			write(sudp, buffer, cnt); //devuelve 0 pq llego el ack y reenvio 
+			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio 
     }	
 
 	return NULL;
