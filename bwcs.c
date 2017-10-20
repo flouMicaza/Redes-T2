@@ -8,25 +8,52 @@
 #include <fcntl.h>
 #include "jsocket6.4.h"
 #include "Data.h"
+
 #include <pthread.h>
-#include <sys/poll.h>
+#include <poll.h>
 
 #define BUFFER_LENGTH 1400 //hay que definir que largo vamos a usarrrr
 
 struct timeval t0, t1, t2;
 struct timeval timeout;
 fd_set set;
-int fd[2]; 
-struct pollfd readstatus;
-readstatus.fd = bwss;
-readstatus.events = POLLIN;
+int fd[2];
 int portTCP;
 char *portUDP="2001";
 int sudp;
 int stcp;
 int rdy=0;
 int serie=0;
+
+
+
+
 void* funcionTCP(void *puerto);
+
+/* Conversion string-> entero de secuencia */
+int to_int_seq(unsigned char *buf) {
+    int res=0;
+    int i;
+
+    for(i=0; i < 5; i++)
+        res = (res*10)+(buf[i]-'0');
+
+// fprintf(stderr, "to_int %d <- %c, %c, %c, %c, %c\n", res, buf[0], buf[1], buf[2], buf[3], buf[4]);
+
+    return res;
+}
+
+/* Conversion entero-> string de secuencia */
+void to_char_seq(int seq, unsigned char *buf) {
+    int i;
+    int res = seq;
+
+    for(i=4; i >= 0; i--) {
+        buf[i] = (res % 10) + '0';
+        res /= 10;
+    }
+// fprintf(stderr, "to_char %d -> %c, %c, %c, %c, %c\n", seq, buf[0], buf[1], buf[2], buf[3], buf[4]);
+}
 
 
 
@@ -40,59 +67,59 @@ void *DbindAux(){
 
 //no estoy segura si el buffer se pasa asi!
 //revise en la funcion Dread y lo modifique (funcion Dread esta en Data-tcp.c)
-void agregarHeader(char *buff,char letra, int numSerie,int largo, char *buffer_salida){
-	char buffer1 = buffer_salida; //hay que agregarle 6 bytes(?)
-	
-//	buffer1=buffer; //no entiendo de donde sale buffer ??
-	
-	
-	//ponemos el header en buffer1. 
-	buffer1[0]=letra;
-	char str[5];
-	to_char_seq(numSerie, str) //dejamos numSerie en str
+void agregarHeader(char *buff,char letra, int numSerie,char *buffer_salida){
+	//ponemos el header en buffer1.
+	buffer_salida[0]=letra;
+	unsigned char str[5];
+	to_char_seq(numSerie, str); //dejamos numSerie en str
 
 	//nose si este for esta bien en el rango!
 	for(int i = 1; i <6; i++){
-		buffer1[i]=str[i-1]; //en el header chanto los elementos del string 
+		buffer_salida[i]=str[i-1]; //en el header chanto los elementos del string
 	}
 
 	//for para meter todo lo nuevo
 	//ojo que hay que iterar desde 0 hasta el largo del buffer(?)
 	for(int i = 6; i<BUFFER_LENGTH; i++){
-		buffer1[i]=buff[i-6];
+		buffer_salida[i]=buff[i-6];
 	}
-	
+
 }
 
 //metodo que espera el ack a traves del pipe
 //revisa que el num de serie sea igual, si es != retorna 0
-//si se acaba el tiempo retorna 0  
+//si se acaba el tiempo retorna 0
 int esperarACK(int numSerie){
+	fd_set fds;
+   	struct timeval timeout;
+   	int rc, res;
 
-	//tiempo que espera la respuesta
-	timeout.tv_sec=1;
-	timeout.tv_usec=0;
-	int rc;
-	char res;
-	//recibe del pipe
-	rc = poll(&readstatus, 1, 1000);
-	//si se acabo el tiempo
-	if(rc==0){
-		return 0;
+
+   	FD_ZERO(&fds);
+   	FD_SET(fd[0], &fds);
+   	rc = select(sizeof(fds)*4, &fds, NULL, NULL, &timeout);
+   	if (rc==-1) {
+    	perror("select failed");
+      	return -1;
+  	}
+
+	else if (rc > 0){
+		res= read(fd[0], &res, sizeof(int));
+		if (res<0){ //error al leer
+			perror("leer el ack salio mal");
+			exit(1);
+		}
+
+		else{ //veo el valor del numero de secuencia que viene
+			if(res==numSerie){
+				return 1;
+			}
+			else {
+				return 0;
+			}
+		}
 	}
-	else if (rc < 0)
-    {
-      perror("  poll() failed");
-      break;
-    }
-	//si el fd tiene algo y si el ack q recibo es el q estoy esperando
-	else if (rc >= 1 && read(fd[0], (int)res, sizeof(int)) == numSerie){
-		return 1;
-	}
-	//si el numero es diferente
-	else {
-		return 0;
-	}	
+	return 0;
 }
 
 /*recibe tcp y manda udp*/
@@ -108,79 +135,109 @@ void *funcionTCP(void *puerto){
 
 	for(bytes=0,packs=0;; bytes+=cnt,packs++) {
 		cnt = Dread(portTCP, buffer, BUFFER_LENGTH);
-		if(bytes == 0)
+		if(bytes == 0){
 			gettimeofday(&t1, NULL); /* Mejor esperar al primer read para empezar a contar */
 			write(sudp,NULL,0); //primer mensaje a udp
-		if(cnt <= 0) 
+		}
+
+		if(cnt <= 0)
 			break;
-		//hay que agregar el header para mandar
-		cnt+=6;
+
 		//se le agrega header al buffer y de manda
 		//NO ESTOY SEGURA SI LOS BUFFER ESTAN FUNCIONANDO BIEN!
-		
+
 		//cree un buffer de salida, y lo muté usando la funcion q hiciste
-		char buffer_salida[BUFFER_LENGTH+6];
-		buffer = agregarHeader(buffer,"D",serie,cnt);
+		char buffer_salida[BUFFER_LENGTH+DHDR];
+		agregarHeader(buffer,'D',serie,buffer_salida);
 		//no se si sea necesario entregarle cnt a agregarHeader
-		
+
 		//intentar enviar hasta que reciba el ack
 		write(sudp, buffer_salida, cnt); //hay que enviarlo por primera vez(?)
 		while(esperarACK(serie) == 0)
-			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio 
-    }	
+			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio
+		serie++;
+    }
 
 	return NULL;
 }
 
 //saca el tipo del header y el numero de secuencia
 //NO ESTOY SEGURA SI SE PONE ASI LA FIRMA!!!
-//cambie la firma para que nos avise que letra es
-int sacarHeader(int[] buffer, char* letra, int*numSec){
-	letra = buffer[0];
-	char numeros[5];
-	for (int i = 1; i < 6; i++){
-		numeros[i-1]=buffer[i];
+//cambie la firma para que nos avise que letra es (0 es A 1 es D)
+int sacarHeader(char buffer[], char* letra, int*numSec,char numString[]){
+	*letra = buffer[0];
+	unsigned char numeros[DHDR-1];
+	for (int i = 1; i < DHDR; i++){
+		numString[i-1]=buffer[i];
 	}
-	
-	num=to_int_seq(numeros);
-	numSec=num;
-	
-	return letra == 'D';
+	//numString=numeros;
+	int num=to_int_seq(numeros);
+	*numSec=num;
+
+	return *letra == 'D';
 }
 
 //funcion que lee por udp y manda por TCP las cosas de vuelta
-//si se lee un ACK entonces 
+//si se lee un ACK entonces se manda por el pipe
 void *funcionUDP(){
 	int bytes, cnt;
-	char buffer[BUFFER_LENGTH+6]; //(habrá que agregarle 6 bytes al buffer (?))
+	char buffer[BUFFER_LENGTH+DHDR]; //(habrá que agregarle 6 bytes al buffer (?))
+	char ackNumSec[DHDR]; //donde guardo el numero como string
+	char ackNumSec1[DHDR]; //ack que mando con la A al ppio
+	char ack;
+	int numSec;
 
 	for(bytes=0;;bytes+=cnt) {
-		if((cnt=read(sudp, buffer, BUFFER_LENGTH)) <= 0){ //ya no queda nada mas para leer
-		    break;
-	        
-	    }
+		cnt=read(sudp, buffer, BUFFER_LENGTH);
 
-	    char ack;
-	    int numSec;
 	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
-	    int conf = sacarHeader(buffer,&ack,&numSec);
-		
-		if(conf)//devolvemos cosas a stcp solo si recibimos un paquete
-			Dwrite(portTCP, buffer, cnt); 
-	    
-	}
+	    int conf = sacarHeader(buffer,&ack,&numSec,ackNumSec); //en conf tengo si es A o D
+		if(ack == 'D' && numSec <= serie){ //significa que no le llego mi ack
+ 			//mando un ack denuevo
+ 			ackNumSec1[0]='A';
+ 			//le pongo los chars del numero al ack
+ 			for (int i = 1; i < DHDR; ++i){
+
+ 				ackNumSec1[i]=ackNumSec[i-1];
+ 			}
+
+ 			write(sudp,ackNumSec1,sizeof(ackNumSec1));
+
+ 			if(cnt <= 0){ //ya no queda nada mas para leer
+		    	break;
+	    	}
+
+ 			else if(numSec == serie){
+ 				Dwrite(portTCP, buffer, cnt);
+ 				serie++;
+ 			}
+
+ 		}
+
+ 		//si lo q recibi es una A entonces es un ack que mando a traves del pipe
+		else if(ack == 'A') {
+			int envio= write(fd[1],&numSec,sizeof(int));
+
+			if(envio!=1){
+				perror("escribir Ack");
+				exit(2);
+			}
+		}
+
+		//el otro caso es que lo que llega es un numero de secuencia mas alto de lo que estaba esperando pero eso no deberia pasar
+
+	//FLO_: Nose porque silenciaste estop
 	//Dwrite(stcp, buffer, 0); //avisa que termino
 	rdy=1;
 	Dclose(stcp);
     close(sudp);
 	return NULL;
-}
-
+}}
 
 int main(){
 	sudp = j_socket_udp_connect("localhost","2000");
     if(sudp < 0) {
-	printf("connect UDP failed\n");
+        printf("connect UDP failed\n");
        	exit(1);
     }
 
@@ -204,7 +261,7 @@ int main(){
 
 	pthread_join(pid1,NULL);
 	pthread_join(pid2,NULL);
-	
+
 	return 0;
 
 }
