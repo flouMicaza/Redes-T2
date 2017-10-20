@@ -39,29 +39,23 @@ void *DbindAux(){
 
 
 //no estoy segura si el buffer se pasa asi!
-//revise en la funcion Dread y lo modifique (funcion Dread esta en Data-tcp.c)
-void agregarHeader(char *buff,char letra, int numSerie,int largo, char *buffer_salida){
-	char buffer1 = buffer_salida; //hay que agregarle 6 bytes(?)
-	
-//	buffer1=buffer; //no entiendo de donde sale buffer ??
-	
-	
+void agregarHeader(int[] buff,char letra, int numSerie,int largo){
+	char buffer1[BUFFER_LENGTH];
+	buffer1=buffer;
 	//ponemos el header en buffer1. 
-	buffer1[0]=letra;
+	buffer[0]=letra;
 	char str[5];
 	to_char_seq(numSerie, str) //dejamos numSerie en str
 
 	//nose si este for esta bien en el rango!
 	for(int i = 1; i <6; i++){
-		buffer1[i]=str[i-1]; //en el header chanto los elementos del string 
+		buffer[i]=str[i-1]; //en el header chanto los elementos del string 
 	}
 
 	//for para meter todo lo nuevo
-	//ojo que hay que iterar desde 0 hasta el largo del buffer(?)
-	for(int i = 6; i<BUFFER_LENGTH; i++){
-		buffer1[i]=buff[i-6];
+	for(int i = 6; i<largo; i++){
+		buffer[i]=buffer1[i-6];
 	}
-	
 }
 
 //metodo que espera el ack a traves del pipe
@@ -117,16 +111,10 @@ void *funcionTCP(void *puerto){
 		cnt+=6;
 		//se le agrega header al buffer y de manda
 		//NO ESTOY SEGURA SI LOS BUFFER ESTAN FUNCIONANDO BIEN!
-		
-		//cree un buffer de salida, y lo muté usando la funcion q hiciste
-		char buffer_salida[BUFFER_LENGTH+6];
-		buffer = agregarHeader(buffer,"D",serie,cnt);
-		//no se si sea necesario entregarle cnt a agregarHeader
-		
-		//intentar enviar hasta que reciba el ack
-		write(sudp, buffer_salida, cnt); //hay que enviarlo por primera vez(?)
+		buffer = agregarHeader(buffer,"D",serie,cnt) 
+		//intentar enviar hasta que reciba el ack 
 		while(esperarACK(serie) == 0)
-			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio 
+			write(sudp, buffer, cnt); //devuelve 0 pq llego el ack y reenvio 
     }	
 
 	return NULL;
@@ -134,25 +122,22 @@ void *funcionTCP(void *puerto){
 
 //saca el tipo del header y el numero de secuencia
 //NO ESTOY SEGURA SI SE PONE ASI LA FIRMA!!!
-//cambie la firma para que nos avise que letra es
-int sacarHeader(int[] buffer, char* letra, int*numSec){
+void sacarHeader(int[] buffer, char* letra, int*numSec){
 	letra = buffer[0];
 	char numeros[5];
-	for (int i = 1; i < 6; i++){
+	for (int i = 1; i < 6; i++)
+	{
 		numeros[i-1]=buffer[i];
 	}
-	
 	num=to_int_seq(numeros);
 	numSec=num;
-	
-	return letra == 'D';
 }
 
 //funcion que lee por udp y manda por TCP las cosas de vuelta
 //si se lee un ACK entonces 
 void *funcionUDP(){
 	int bytes, cnt;
-	char buffer[BUFFER_LENGTH+6]; //(habrá que agregarle 6 bytes al buffer (?))
+	char buffer[BUFFER_LENGTH];
 
 	for(bytes=0;;bytes+=cnt) {
 		if((cnt=read(sudp, buffer, BUFFER_LENGTH)) <= 0){ //ya no queda nada mas para leer
@@ -163,10 +148,9 @@ void *funcionUDP(){
 	    char ack;
 	    int numSec;
 	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
-	    int conf = sacarHeader(buffer,&ack,&numSec);
-		
-		if(conf)//devolvemos cosas a stcp solo si recibimos un paquete
-			Dwrite(portTCP, buffer, cnt); 
+	    sacarHeader(buffer,&ack,&numSec);
+
+	    Dwrite(portTCP, buffer, cnt); //devolvemos cosas a stcp
 	    
 	}
 	//Dwrite(stcp, buffer, 0); //avisa que termino
