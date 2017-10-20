@@ -79,7 +79,7 @@ int esperarACK(int numSerie){
       perror("  poll() failed");
       break;
     }
-	//si el ack q recibo es el q estoy esperando
+	//si el fd tiene algo y si el ack q recibo es el q estoy esperando
 	else if (rc >= 1 && read(fd[0], (int)res, sizeof(int)) == numSerie){
 		return 1;
 	}
@@ -120,6 +120,19 @@ void *funcionTCP(void *puerto){
 	return NULL;
 }
 
+//saca el tipo del header y el numero de secuencia
+//NO ESTOY SEGURA SI SE PONE ASI LA FIRMA!!!
+void sacarHeader(int[] buffer, char* letra, int*numSec){
+	letra = buffer[0];
+	char numeros[5];
+	for (int i = 1; i < 6; i++)
+	{
+		numeros[i-1]=buffer[i];
+	}
+	num=to_int_seq(numeros);
+	numSec=num;
+}
+
 //funcion que lee por udp y manda por TCP las cosas de vuelta
 //si se lee un ACK entonces 
 void *funcionUDP(){
@@ -131,6 +144,11 @@ void *funcionUDP(){
 		    break;
 	        
 	    }
+
+	    char ack;
+	    int numSec;
+	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
+	    sacarHeader(buffer,&ack,&numSec);
 
 	    Dwrite(portTCP, buffer, cnt); //devolvemos cosas a stcp
 	    
