@@ -29,33 +29,8 @@ int serie=0;
 
 
 void* funcionTCP(void *puerto);
-
-/* Conversion string-> entero de secuencia */
-int to_int_seq(unsigned char *buf) {
-    int res=0;
-    int i;
-
-    for(i=0; i < 5; i++)
-        res = (res*10)+(buf[i]-'0');
-
-// fprintf(stderr, "to_int %d <- %c, %c, %c, %c, %c\n", res, buf[0], buf[1], buf[2], buf[3], buf[4]);
-
-    return res;
-}
-
-/* Conversion entero-> string de secuencia */
-void to_char_seq(int seq, unsigned char *buf) {
-    int i;
-    int res = seq;
-
-    for(i=4; i >= 0; i--) {
-        buf[i] = (res % 10) + '0';
-        res /= 10;
-    }
-// fprintf(stderr, "to_char %d -> %c, %c, %c, %c, %c\n", seq, buf[0], buf[1], buf[2], buf[3], buf[4]);
-}
-
-
+int to_int_seq(unsigned char *buf);
+void to_char_seq(int seq, unsigned char *buf);
 
 //funcion auxiliar que hace Dbind
 //creada para no enrtegar inputs en el thread
@@ -191,7 +166,8 @@ void *funcionUDP(){
 		cnt=read(sudp, buffer, BUFFER_LENGTH);
 
 	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
-	    int conf = sacarHeader(buffer,&ack,&numSec,ackNumSec); //en conf tengo si es A o D
+	    sacarHeader(buffer,&ack,&numSec,ackNumSec); //en conf tengo si es A o D
+		
 		if(ack == 'D' && numSec <= serie){ //significa que no le llego mi ack
  			//mando un ack denuevo
  			ackNumSec1[0]='A';
@@ -223,6 +199,7 @@ void *funcionUDP(){
 				exit(2);
 			}
 		}
+	}
 
 		//el otro caso es que lo que llega es un numero de secuencia mas alto de lo que estaba esperando pero eso no deberia pasar
 
@@ -232,7 +209,7 @@ void *funcionUDP(){
 	Dclose(stcp);
     close(sudp);
 	return NULL;
-}}
+}
 
 int main(){
 	sudp = j_socket_udp_connect("localhost","2000");
@@ -263,5 +240,4 @@ int main(){
 	pthread_join(pid2,NULL);
 
 	return 0;
-
 }
