@@ -29,8 +29,11 @@ int serie=0;
 
 
 void* funcionTCP(void *puerto);
-int to_int_seq(unsigned char *buf);
 void to_char_seq(int seq, unsigned char *buf);
+int to_int_seq(unsigned char *buf);
+
+
+
 
 //funcion auxiliar que hace Dbind
 //creada para no enrtegar inputs en el thread
@@ -55,7 +58,7 @@ void agregarHeader(char *buff,char letra, int numSerie,char *buffer_salida){
 
 	//for para meter todo lo nuevo
 	//ojo que hay que iterar desde 0 hasta el largo del buffer(?)
-	for(int i = 6; i<BUFFER_LENGTH; i++){
+	for(int i = 6; i<BUFFER_LENGTH+6; i++){
 		buffer_salida[i]=buff[i-6];
 	}
 
@@ -73,14 +76,17 @@ int esperarACK(int numSerie){
    	FD_ZERO(&fds);
    	FD_SET(fd[0], &fds);
    	rc = select(sizeof(fds)*4, &fds, NULL, NULL, &timeout);
+	
    	if (rc==-1) {
     	perror("select failed");
       	return -1;
   	}
 
 	else if (rc > 0){
-		res= read(fd[0], &res, sizeof(int));
-		if (res<0){ //error al leer
+		int ans = read(fd[0], &res, sizeof(int));
+		printf("respuesta es %d", res);
+		
+		if (ans<0){ //error al leer
 			perror("leer el ack salio mal");
 			exit(1);
 		}
@@ -114,22 +120,30 @@ void *funcionTCP(void *puerto){
 			gettimeofday(&t1, NULL); /* Mejor esperar al primer read para empezar a contar */
 			write(sudp,NULL,0); //primer mensaje a udp
 		}
+		printf("llego paquete de %d \n",cnt);
 
 		if(cnt <= 0)
 			break;
-
+		cnt += 6;
+		
+		printf("cnt es de %d \n", cnt);
 		//se le agrega header al buffer y de manda
 		//NO ESTOY SEGURA SI LOS BUFFER ESTAN FUNCIONANDO BIEN!
 
 		//cree un buffer de salida, y lo muté usando la funcion q hiciste
 		char buffer_salida[BUFFER_LENGTH+DHDR];
 		agregarHeader(buffer,'D',serie,buffer_salida);
-		//no se si sea necesario entregarle cnt a agregarHeader
-
+		printf("sali de agregar header \n");
+		
+		
 		//intentar enviar hasta que reciba el ack
-		write(sudp, buffer_salida, cnt); //hay que enviarlo por primera vez(?)
+		write(sudp, buffer_salida, cnt);
+		printf("paquete enviado \n");
+		
 		while(esperarACK(serie) == 0)
+			printf("while espera de ack \n");
 			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio
+		printf("salida de while, aumento de serie \n");
 		serie++;
     }
 
@@ -163,10 +177,12 @@ void *funcionUDP(){
 	int numSec;
 
 	for(bytes=0;;bytes+=cnt) {
-		cnt=read(sudp, buffer, BUFFER_LENGTH);
+		cnt=read(sudp, buffer, BUFFER_LENGTH+DHDR);
+		printf("llego paquete de %d por udp \n",cnt);
 
 	    //se saca el ack y el numero de secuencia que viene y se guardan en ack y numSec
 	    sacarHeader(buffer,&ack,&numSec,ackNumSec); //en conf tengo si es A o D
+		printf("ack: %c, num sec: %d \n", ack, numSec);
 		
 		if(ack == 'D' && numSec <= serie){ //significa que no le llego mi ack
  			//mando un ack denuevo
@@ -192,10 +208,14 @@ void *funcionUDP(){
 
  		//si lo q recibi es una A entonces es un ack que mando a traves del pipe
 		else if(ack == 'A') {
-			int envio= write(fd[1],&numSec,sizeof(int));
+			printf("llego ack \n");
 
-			if(envio!=1){
-				perror("escribir Ack");
+			int envio= write(fd[1],&numSec,sizeof(int));
+			
+			printf("write: %d \n", envio);
+
+			if(envio < 0){
+				perror("escribir Ack \n");
 				exit(2);
 			}
 		}
