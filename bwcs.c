@@ -143,6 +143,7 @@ void *funcionTCP(void *puerto){
 		while(esperarACK(serie) == 0)
 			printf("while espera de ack \n");
 			write(sudp, buffer_salida, cnt); //devuelve 0 pq llego el ack y reenvio
+		
 		printf("salida de while, aumento de serie \n");
 		serie++;
     }
@@ -154,10 +155,12 @@ void *funcionTCP(void *puerto){
 //NO ESTOY SEGURA SI SE PONE ASI LA FIRMA!!!
 //cambie la firma para que nos avise que letra es (0 es A 1 es D)
 int sacarHeader(char buffer[], char* letra, int*numSec,char numString[]){
+	
 	*letra = buffer[0];
 	unsigned char numeros[DHDR-1];
 	for (int i = 1; i < DHDR; i++){
-		numString[i-1]=buffer[i];
+		numeros[i-1]=buffer[i];
+		numString[i-1] = buffer[i];
 	}
 	//numString=numeros;
 	int num=to_int_seq(numeros);
@@ -224,7 +227,7 @@ void *funcionUDP(){
 		//el otro caso es que lo que llega es un numero de secuencia mas alto de lo que estaba esperando pero eso no deberia pasar
 
 	//FLO_: Nose porque silenciaste estop
-	//Dwrite(stcp, buffer, 0); //avisa que termino
+	Dwrite(stcp, buffer, 0); //avisa que termino
 	rdy=1;
 	Dclose(stcp);
     close(sudp);
